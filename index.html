@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイメモ帳</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.png">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 20px;
+      max-width: 500px;
+      margin: auto;
+      background-color: #f4f6f8;
+      color: #333;
+    }
+    h1 { font-size: 20px; text-align: center; margin-bottom: 16px; }
+    .input-area { display: flex; gap: 8px; margin-bottom: 20px; }
+    input[type="text"] {
+      flex: 1; padding: 12px; font-size: 16px;
+      border: 1px solid #ccc; border-radius: 8px;
+    }
+    button.add-btn {
+      padding: 12px 18px; font-size: 16px; background: #007bff;
+      color: white; border: none; border-radius: 8px; cursor: pointer;
+    }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li {
+      background: white; padding: 12px 15px; margin-bottom: 10px;
+      border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      display: flex; justify-content: space-between; align-items: center;
+      word-break: break-all;
+    }
+    .memo-text { margin-right: 10px; line-height: 1.4; }
+    .memo-date { font-size: 11px; color: #888; display: block; margin-top: 4px; }
+    button.del-btn {
+      background: #ff4d4f; color: white; border: none; border-radius: 6px;
+      padding: 6px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>マイメモ帳</h1>
+
+  <div class="input-area">
+    <input type="text" id="memoInput" placeholder="メモを入力...">
+    <button class="add-btn" onclick="addMemo()">追加</button>
+  </div>
+
+  <ul id="memoList"></ul>
+
+  <script>
+    const input = document.getElementById('memoInput');
+    const list = document.getElementById('memoList');
+    const DB_NAME = 'MyMemoDB';
+    const STORE_NAME = 'memos';
+    let db;
+
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+    };
+    request.onsuccess = (e) => {
+      db = e.target.result;
+      renderMemos();
+    };
+
+    function addMemo() {
+      const text = input.value.trim();
+      if (!text || !db) return;
+
+      const now = new Date();
+      const dateStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const tx = db.transaction([STORE_NAME], 'readwrite');
+      tx.objectStore(STORE_NAME).add({ text: text, date: dateStr });
+      tx.oncomplete = () => {
+        input.value = '';
+        renderMemos();
+      };
+    }
+
+    function deleteMemo(id) {
+      const tx = db.transaction([STORE_NAME], 'readwrite');
+      tx.objectStore(STORE_NAME).delete(id);
+      tx.oncomplete = () => renderMemos();
+    }
+
+    function renderMemos() {
+      const tx = db.transaction([STORE_NAME], 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => {
+        const memos = req.result;
+        list.innerHTML = '';
+        memos.reverse().forEach((memo) => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <div class="memo-text">
+              <div>${escapeHtml(memo.text)}</div>
+              <span class="memo-date">${memo.date}</span>
+            </div>
+            <button class="del-btn" onclick="deleteMemo(${memo.id})">削除</button>
+          `;
+          list.appendChild(li);
+        });
+      };
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addMemo();
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
